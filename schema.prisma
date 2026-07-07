@@ -1,0 +1,122 @@
+// Sola Nutri - Prisma Schema
+// Medical nutrition tracking system for Ipsen Egypt
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============= USERS (Employees + Admins) =============
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  username     String   @unique
+  password     String   // plain text per spec section 13 (small internal project)
+  role         String   @default("employee") // "admin" | "employee"
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  children     Child[]
+  followups    Followup[]
+  notificationsSent Notification[]
+}
+
+// ============= CHILDREN =============
+model Child {
+  id              String   @id @default(cuid())
+  name            String
+  guardianName    String?
+  birthDate       DateTime?
+  gender          String?  // "male" | "female"
+  phone           String?
+  diagnosis       String?  // free text
+  medications     String?  // free text (medications/allergies)
+  notes           String?
+
+  parentCode      String?  // 6-digit code for parent login
+  parentPassword  String?  // 4-digit password for parent login
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdById     String?
+  createdBy       User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  followups       Followup[]
+  chatMessages    ChatMessage[]
+}
+
+// ============= FOLLOW-UPS (Visits) =============
+model Followup {
+  id              String   @id @default(cuid())
+  childId         String
+  child           Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  visitDate       DateTime @default(now())
+  weight          Float    // kg
+  height          Float?   // cm
+  bmi             Float?
+  whPercent       Float?   // weight-for-height %
+  haPercent       Float?   // height-for-age %
+  calories        Float?   // calculated daily kcal
+  protein         Float?   // calculated daily protein g
+  fluids          Float?   // calculated daily fluids ml
+  activityFactor  Float?   @default(1.3)
+  solaproRatio    Float?   @default(50) // % of kcal from Solapro
+  actualFoodKcal  Float?   // optional: actual food intake
+  feedingType     String?  // breastfeeding / mixed / formula / solid
+  diagnosisAtVisit String?
+  medicationsAtVisit String?
+
+  recordedById    String?
+  recordedBy      User?    @relation(fields: [recordedById], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+}
+
+// ============= NOTIFICATIONS (Admin -> Employees) =============
+model Notification {
+  id           String   @id @default(cuid())
+  title        String
+  body         String
+  recipient    String   @default("all") // "all" | user id
+  sentById     String?
+  sentBy       User?    @relation(fields: [sentById], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+}
+
+// ============= RECIPES (50 from PDF + AI-generated preparation) =============
+model Recipe {
+  id              String   @id @default(cuid())
+  number          Int      // recipe number 1..50 from PDF
+  name            String   // Arabic recipe name
+  category        String   // "milk" | "liqueur" | "protein" | "breakfast" | "weekly" | "dessert" | "special"
+  ingredients     String   // raw ingredients text (from PDF)
+  amounts         String   // amounts/measurements (from PDF)
+  nutritionKcal   Float?
+  nutritionProtein Float?
+  nutritionFat    Float?
+  nutritionCarbs  Float?
+  nutritionSugar  Float?
+
+  preparationMethod String? // AI-generated cooking instructions (cached)
+  preparationGeneratedAt DateTime?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ============= CHAT MESSAGES (AI conversation persistence) =============
+model ChatMessage {
+  id           String   @id @default(cuid())
+  childId      String?
+  child        Child?   @relation(fields: [childId], references: [id], onDelete: Cascade)
+  userRole     String   // "employee" | "parent"
+  userId       String?  // employee id (if employee)
+  role         String   // "user" | "assistant"
+  content      String
+  context      String?  // JSON snapshot of context at that point
+  createdAt    DateTime @default(now())
+}
